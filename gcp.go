@@ -16,13 +16,13 @@ const (
 	httpHeader        = `X-Cloud-Trace-Context`
 )
 
-var _ propagation.TextMapPropagator = (*HTTPFormat)(nil)
+var _ propagation.TextMapPropagator = HTTPFormat{}
 
 // HTTPFormat implements propagation.HTTPFormat to propagate
 // traces in HTTP headers for Google Cloud Platform and Stackdriver Trace.
 type HTTPFormat struct{}
 
-func (f *HTTPFormat) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
+func (f HTTPFormat) Inject(ctx context.Context, carrier propagation.TextMapCarrier) {
 	sc := trace.SpanFromContext(ctx).SpanContext()
 	if !sc.TraceID().IsValid() || !sc.SpanID().IsValid() {
 		return
@@ -33,7 +33,7 @@ func (f *HTTPFormat) Inject(ctx context.Context, carrier propagation.TextMapCarr
 	carrier.Set(httpHeader, header)
 }
 
-func (f *HTTPFormat) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
+func (f HTTPFormat) Extract(ctx context.Context, carrier propagation.TextMapCarrier) context.Context {
 	if h := carrier.Get(httpHeader); h != "" {
 		sc, err := extract(h)
 		if err == nil && sc.IsValid() {
@@ -86,6 +86,6 @@ func extract(h string) (trace.SpanContext, error) {
 	return sc, nil
 }
 
-func (f *HTTPFormat) Fields() []string {
+func (f HTTPFormat) Fields() []string {
 	return []string{httpHeader}
 }
