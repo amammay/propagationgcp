@@ -83,6 +83,16 @@ func extract(h string) (trace.SpanContext, error) {
 	if !strings.HasPrefix(h, "o=") {
 		return sc, errors.New("failed to parse value")
 	}
+
+	o, err := strconv.ParseUint(h[2:], 10, 64)
+	if err != nil {
+		return sc, fmt.Errorf("failed to parse value: %w", err)
+	}
+
+	// 1 = to sample
+	if o == 1 {
+		sc = sc.WithTraceFlags(trace.FlagsSampled)
+	}
 	return sc, nil
 }
 

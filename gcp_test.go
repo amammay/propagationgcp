@@ -2,9 +2,12 @@ package propagationgcp_test
 
 import (
 	"context"
+	"encoding/binary"
 	"github.com/amammay/propagationgcp"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"go.opentelemetry.io/otel/oteltest"
@@ -31,26 +34,56 @@ func TestHTTPFormatInject(t *testing.T) {
 	}
 }
 
-func TestHTTPFormatExtract(t *testing.T) {
-
-	req1 := httptest.NewRequest("GET", "http://example.com", nil)
-	req1.Header.Set("X-Cloud-Trace-Context", "a0d3eee13de6a4bbcf291eb444b94f28/999;o=1")
-
-	// Tests the extract funcation
-	hf := propagationgcp.HTTPFormat{}
-	ctx := hf.Extract(context.Background(), prop.HeaderCarrier(req1.Header))
-
-	sc := trace.SpanContextFromContext(ctx)
-
-	if diff := reflect.DeepEqual(sc.TraceID().String(), "a0d3eee13de6a4bbcf291eb444b94f28"); !diff {
-		t.Errorf("failed to traceid test: %v", diff)
+func TestHTTPFormat_Extract(t *testing.T) {
+	type want struct {
+		traceID string
+		spanID  string
+		sampled bool
 	}
 
-	if diff := reflect.DeepEqual(sc.SpanID().String(), "00000000000003e7"); !diff {
-		t.Errorf("failed to spanid test: %v", diff)
+	tests := []struct {
+		traceHeader string
+		want        want
+	}{
+		{
+			traceHeader: "a0d3eee13de6a4bbcf291eb444b94f28/8528140779317015234;o=1",
+			want: want{
+				traceID: "a0d3eee13de6a4bbcf291eb444b94f28",
+				spanID:  "8528140779317015234",
+				sampled: true,
+			},
+		},
+		{
+			traceHeader: "a0d3eee13de6a4bbcf291eb444b94f28/8528140779317015234;o=0",
+			want: want{
+				traceID: "a0d3eee13de6a4bbcf291eb444b94f28",
+				spanID:  "8528140779317015234",
+				sampled: false,
+			},
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.traceHeader, func(t *testing.T) {
+			httpFormat := propagationgcp.HTTPFormat{}
+			req := httptest.NewRequest(http.MethodGet, "http://example.com", nil)
+			req.Header.Add("X-Cloud-Trace-Context", tt.traceHeader)
+			ctx := httpFormat.Extract(context.Background(), prop.HeaderCarrier(req.Header))
+			sc := trace.SpanContextFromContext(ctx)
+			if diff := reflect.DeepEqual(sc.TraceID().String(), tt.want.traceID); !diff {
+				t.Errorf("failed to traceid test: %v", diff)
+			}
 
-	if sc.TraceFlags().IsSampled()  {
-		t.Errorf("failed to trace flag test")
+			s := sc.SpanID()
+			data := binary.BigEndian.Uint64(s[:])
+
+			if diff := reflect.DeepEqual(strconv.Itoa(int(data)), tt.want.spanID); !diff {
+				t.Errorf("failed to spanid test: %v", diff)
+			}
+
+			if diff := reflect.DeepEqual(sc.IsSampled(), tt.want.sampled); !diff {
+				t.Errorf("failed to trace flag test")
+			}
+
+		})
 	}
 }
